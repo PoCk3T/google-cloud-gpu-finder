@@ -149,6 +149,8 @@ def create_instance(compute, project, config, zone_list):
                 # image_url = "http://storage.googleapis.com/gce-demo-input/photo.jpg"
                 # image_caption = "Ready for dessert?"
 
+                is_preemptible = compute_config.get('preemptible', False)
+
                 config = {
                     'name': instance_name,
                     'machineType': machine_type,
@@ -202,9 +204,9 @@ def create_instance(compute, project, config, zone_list):
                     'description': '',
                     'labels': {},
                     'scheduling': {
-                        'preemptible': False,
+                        'preemptible': is_preemptible,
                         'onHostMaintenance': 'TERMINATE',
-                        'automaticRestart': True,
+                        'automaticRestart': not is_preemptible,
                         'nodeAffinities': []
                     },
                     'deletionProtection': False,

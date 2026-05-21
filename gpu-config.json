@@ -2,6 +2,7 @@
   "project_id": "jared-playground",
   "bucket_name": "find-gcp-gpus",
   "number_of_instances": 3,
+  "preemptible": false,
   "instance_config": {
     "name": "demo-instance",
     "root_persistent_disk": {
