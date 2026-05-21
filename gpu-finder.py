@@ -358,4 +358,9 @@ def main(gpu_config, wait=True):
 if __name__ == '__main__':
     with open('gpu-config.json', 'r') as f:
         gpu_config = json.load(f)
-    main(gpu_config)
+    if isinstance(gpu_config, list):
+        for config in gpu_config:
+            print(f"Processing configuration for project: {config.get('project_id')} and machine type: {config.get('instance_config', {}).get('machine_type')}")
+            main(config)
+    else:
+        main(gpu_config)
