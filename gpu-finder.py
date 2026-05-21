@@ -23,13 +23,20 @@ For more information, see the README.md under /compute.
 
 import time
 import json
+import re
 import googleapiclient.discovery
 
 def check_gpu_config(config):
     compute_config = config
-    if compute_config['instance_config']['machine_type'].startswith('a2'):
+    machine_type = compute_config['instance_config']['machine_type']
+
+    match = re.search(r'(?:highgpu|ultragpu|megagpu|edgegpu|standard)-(\d+)(?:g|metal)?', machine_type)
+
+    # For G2 and G4 standard machine types, the number represents vCPUs, not GPUs.
+    # We skip strict GPU count matching for standard machine types for now to avoid breaking the script.
+    if match and 'standard' not in machine_type:
         number_of_gpus_requested = compute_config['instance_config']['number_of_gpus']
-        gpus_in_machine_type = compute_config['instance_config']['machine_type'][(compute_config['instance_config']['machine_type'].find('highgpu')+8):(len(compute_config['instance_config']['machine_type'])-1)]
+        gpus_in_machine_type = match.group(1)
         if number_of_gpus_requested != int(gpus_in_machine_type):
             raise Exception("Please match the number of GPUs parameter with the correct machine type in the config file")
 
@@ -38,10 +45,10 @@ def get_zone_info(compute, project):
     request = compute.zones().list(project=project)
     while request is not None:
         response = request.execute()
-        for zone in response['items']:
+        for zone in response.get('items', []):
             if zone['status'] == 'UP':
                 zone_regions = {
-                    'region': zone['name'][0:len(zone['name'])-2],
+                    'region': zone['name'].rsplit('-', 1)[0],
                     'zone': zone['name']
                 }
                 zone_list.append(zone_regions)
@@ -55,7 +62,7 @@ def check_machine_type_and_accelerator(compute, project, machine_type, gpu_type,
         request = compute.machineTypes().list(project=project, zone=zone['zone'])
         while request is not None:
             response = request.execute()
-            for machine in response['items']:
+            for machine in response.get('items', []):
                 if 'accelerators' in machine and machine['name'] == machine_type and machine['accelerators'][0]['guestAcceleratorType'] == gpu_type:
                     zones_with_instances = {
                         'machine_type': machine['name'],
@@ -88,7 +95,7 @@ def get_accelerator_quota(compute, project, config, zone, requested_gpus):
         while request is not None:
             response = request.execute()
             if 'items' in response:
-                for accelerator in response['items']:
+                for accelerator in response.get('items', []):
                     if accelerator['name'] == config['instance_config']['gpu_type']:
                         if requested_gpus <= accelerator['maximumCardsPerInstance']:
                             accelerator_dict = {
@@ -141,6 +148,8 @@ def create_instance(compute, project, config, zone_list):
                 #         os.path.dirname(__file__), 'startup-script.sh'), 'r').read()
                 # image_url = "http://storage.googleapis.com/gce-demo-input/photo.jpg"
                 # image_caption = "Ready for dessert?"
+
+                is_preemptible = compute_config.get('preemptible', False)
 
                 config = {
                     'name': instance_name,
@@ -195,9 +204,9 @@ def create_instance(compute, project, config, zone_list):
                     'description': '',
                     'labels': {},
                     'scheduling': {
-                        'preemptible': False,
+                        'preemptible': is_preemptible,
                         'onHostMaintenance': 'TERMINATE',
-                        'automaticRestart': True,
+                        'automaticRestart': not is_preemptible,
                         'nodeAffinities': []
                     },
                     'deletionProtection': False,
@@ -282,7 +291,6 @@ def create_instance(compute, project, config, zone_list):
             print(f"All regions attempted, there are not enough resources to create the desired {compute_config['number_of_instances']} instances, {instances} created")
             break
     return(created_instances)
-    time.sleep(1)
 
 def delete_instance(compute, project, instance_details):
     instances = instance_details
@@ -350,4 +358,9 @@ def main(gpu_config, wait=True):
 if __name__ == '__main__':
     with open('gpu-config.json', 'r') as f:
         gpu_config = json.load(f)
-    main(gpu_config)
+    if isinstance(gpu_config, list):
+        for config in gpu_config:
+            print(f"Processing configuration for project: {config.get('project_id')} and machine type: {config.get('instance_config', {}).get('machine_type')}")
+            main(config)
+    else:
+        main(gpu_config)
