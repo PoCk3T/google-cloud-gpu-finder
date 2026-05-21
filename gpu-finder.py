@@ -24,7 +24,45 @@ For more information, see the README.md under /compute.
 import time
 import json
 import re
+import os
+import copy
 import googleapiclient.discovery
+
+def load_state():
+    if os.path.exists('gpu-finder-state.json'):
+        try:
+            with open('gpu-finder-state.json', 'r') as f:
+                return json.load(f)
+        except Exception:
+            return {"instances": []}
+    return {"instances": []}
+
+def save_state(state):
+    with open('gpu-finder-state.json', 'w') as f:
+        json.dump(state, f, indent=4)
+
+def verify_and_get_active_instances(compute, project, base_name, state):
+    active_instances = []
+    updated_instances = []
+    for instance in state.get("instances", []):
+        if instance.get("project") == project and (instance.get("name") == base_name or instance.get("name", "").startswith(base_name + "-")):
+            try:
+                res = compute.instances().get(
+                    project=project,
+                    zone=instance["zone"],
+                    instance=instance["name"]
+                ).execute()
+                status = res.get("status")
+                if status in ("PROVISIONING", "STAGING", "RUNNING"):
+                    active_instances.append(instance)
+                    updated_instances.append(instance)
+            except Exception:
+                pass
+        else:
+            updated_instances.append(instance)
+    state["instances"] = updated_instances
+    save_state(state)
+    return active_instances
 
 def check_gpu_config(config):
     compute_config = config
@@ -151,6 +189,21 @@ def create_instance(compute, project, config, zone_list):
 
                 is_preemptible = compute_config.get('preemptible', False)
 
+                network_interface = {
+                    'kind': 'compute#networkInterface',
+                    'network': compute_config['instance_config']['network_interfaces']['network'],
+                    'aliasIpRanges': []
+                }
+                if compute_config['instance_config'].get('assign_external_ip', True):
+                    network_interface['accessConfigs'] = [
+                        {
+                            'kind': 'compute#accessConfig',
+                            'name': 'External NAT',
+                            'type': 'ONE_TO_ONE_NAT',
+                            'networkTier': 'PREMIUM'
+                        }
+                    ]
+
                 config = {
                     'name': instance_name,
                     'machineType': machine_type,
@@ -187,20 +240,7 @@ def create_instance(compute, project, config, zone_list):
 
                     # Specify a network interface with NAT to access the public
                     # internet.
-                    'networkInterfaces': [{
-                        'kind': 'compute#networkInterface',
-                        'network': compute_config['instance_config']['network_interfaces']['network'],
-                        'accessConfigs': [
-                            {
-                                'kind': 'compute#accessConfig',
-                                'name': 'External NAT',
-                                'type': 'ONE_TO_ONE_NAT',
-                                'networkTier': 'PREMIUM'
-                            }
-                        ],
-                        'aliasIpRanges': []
-                    }
-                    ],
+                    'networkInterfaces': [network_interface],
                     'description': '',
                     'labels': {},
                     'scheduling': {
@@ -222,7 +262,7 @@ def create_instance(compute, project, config, zone_list):
                     }
                     ],
                     'shieldedInstanceConfig': {
-                        'enableSecureBoot': False,
+                        'enableSecureBoot': True,
                         'enableVtpm': True,
                         'enableIntegrityMonitoring': True
                     },
@@ -272,6 +312,16 @@ def create_instance(compute, project, config, zone_list):
                                 "zone": zone_config['zone']
                             }
                             created_instances.append(instance_details)
+                            # Save to state file immediately
+                            state = load_state()
+                            if "instances" not in state:
+                                state["instances"] = []
+                            state["instances"].append({
+                                "name": instance_name,
+                                "zone": zone_config['zone'],
+                                "project": project
+                            })
+                            save_state(state)
                         break
                 if instances >= compute_config['number_of_instances']:
                     print(f"Reached the desired number of instances")
@@ -317,6 +367,13 @@ def delete_instance(compute, project, instance_details):
                 print("done.")
                 if 'error' in result:
                     raise Exception(result['error'])
+                state = load_state()
+                if "instances" in state:
+                    state["instances"] = [
+                        inst for inst in state["instances"]
+                        if not (inst.get("name") == name and inst.get("zone") == zone and inst.get("project") == project)
+                    ]
+                save_state(state)
                 break
 
 def create_instance_test(compute, project, config, zone, requested_gpus):
@@ -333,34 +390,78 @@ def create_instance_test(compute, project, config, zone, requested_gpus):
 
 def main(gpu_config, wait=True):
     compute = googleapiclient.discovery.build('compute', 'v1')
-    if gpu_config["instance_config"]["zone"]:
-        print(f"Processing selected zones from {gpu_config['instance_config']['zone']}")
-        zone_info = get_zone_info(compute, gpu_config["project_id"])
-        compute_zones = [z for z in zone_info if z['zone'] in gpu_config['instance_config']['zone']]
+    state = load_state()
+    active_instances = verify_and_get_active_instances(compute, gpu_config["project_id"], gpu_config["instance_config"]["name"], state)
+    
+    local_config = copy.deepcopy(gpu_config)
+    num_active = len(active_instances)
+    remaining_instances = local_config['number_of_instances'] - num_active
+    
+    if remaining_instances <= 0:
+        print(f"All {local_config['number_of_instances']} instances are already active. Skipping configuration.")
+        return
+        
+    local_config['number_of_instances'] = remaining_instances
+
+    if local_config["instance_config"]["zone"]:
+        print(f"Processing selected zones from {local_config['instance_config']['zone']}")
+        zone_info = get_zone_info(compute, local_config["project_id"])
+        compute_zones = [z for z in zone_info if z['zone'] in local_config['instance_config']['zone']]
     else:
         print("Processing all zones")
-        compute_zones = get_zone_info(compute, gpu_config["project_id"])
-    check_gpu_config(gpu_config)
+        compute_zones = get_zone_info(compute, local_config["project_id"])
+    check_gpu_config(local_config)
     # distinct_zones = list({v['zone'] for v in compute_zones})
-    available_zones = check_machine_type_and_accelerator(compute, gpu_config["project_id"], gpu_config["instance_config"]["machine_type"], gpu_config["instance_config"]["gpu_type"], compute_zones)
-    accelerators = get_accelerator_quota(compute, gpu_config["project_id"], gpu_config, available_zones, gpu_config["instance_config"]["number_of_gpus"])
+    available_zones = check_machine_type_and_accelerator(compute, local_config["project_id"], local_config["instance_config"]["machine_type"], local_config["instance_config"]["gpu_type"], compute_zones)
+    accelerators = get_accelerator_quota(compute, local_config["project_id"], local_config, available_zones, local_config["instance_config"]["number_of_gpus"])
     available_regions = list({v['region'] for v in available_zones})
     if available_regions:
-        print(f"Machine type {gpu_config['instance_config']['machine_type']} is available in the following regions: {available_regions}")
-        instance_details = create_instance(compute, gpu_config["project_id"], gpu_config, accelerators)
+        print(f"Machine type {local_config['instance_config']['machine_type']} is available in the following regions: {available_regions}")
+        instance_details = create_instance(compute, local_config["project_id"], local_config, accelerators)
+        all_instances = active_instances + instance_details
         if wait:
             print("hit enter to delete instances")
             input()
-        delete_instance(compute, gpu_config["project_id"], instance_details)
+        delete_instance(compute, local_config["project_id"], all_instances)
     else:
-        print(f"No regions available with the instance configuration {gpu_config['instance_config']['machine_type']} machine type and {gpu_config['instance_config']['gpu_type']} GPU type")
+        print(f"No regions available with the instance configuration {local_config['instance_config']['machine_type']} machine type and {local_config['instance_config']['gpu_type']} GPU type")
 
 if __name__ == '__main__':
     with open('gpu-config.json', 'r') as f:
         gpu_config = json.load(f)
+        
+    failures = []
+    
     if isinstance(gpu_config, list):
         for config in gpu_config:
-            print(f"Processing configuration for project: {config.get('project_id')} and machine type: {config.get('instance_config', {}).get('machine_type')}")
-            main(config)
+            project_id = config.get('project_id')
+            machine_type = config.get('instance_config', {}).get('machine_type')
+            print(f"Processing configuration for project: {project_id} and machine type: {machine_type}")
+            try:
+                main(config)
+            except Exception as e:
+                print(f"Error processing configuration for project {project_id}, machine type {machine_type}: {e}")
+                failures.append({
+                    "project_id": project_id,
+                    "machine_type": machine_type,
+                    "error": str(e)
+                })
     else:
-        main(gpu_config)
+        project_id = gpu_config.get('project_id')
+        machine_type = gpu_config.get('instance_config', {}).get('machine_type')
+        try:
+            main(gpu_config)
+        except Exception as e:
+            print(f"Error processing configuration for project {project_id}, machine type {machine_type}: {e}")
+            failures.append({
+                "project_id": project_id,
+                "machine_type": machine_type,
+                "error": str(e)
+            })
+            
+    if failures:
+        print("\nSummary of failures:")
+        for fail in failures:
+            print(f"- Project: {fail['project_id']}, Machine Type: {fail['machine_type']}, Error: {fail['error']}")
+    else:
+        print("\nAll configurations processed successfully.")

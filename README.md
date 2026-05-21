@@ -124,3 +124,24 @@ pip install -r requirements.txt
 
 ## Clean Up
 There is a `delete_instance` function in the script that will delete the instances passed in the `instance_details` parameter. Please be mindful of cleaning up instances with GPUs attached when these are no longer needed.
+
+## Modern GCE Constraints & Key Lessons
+
+Modern GCP environments and newer machine/GPU families introduce strict constraints and hardware requirements that must be handled during provisioning.
+
+### 1. Handling Modern GCE Constraints
+
+* **`constraints/compute.requireShieldedVm`**: Many modern enterprise folders or projects enforce this organizational policy. To prevent creation failures, GPU Finder automatically configures every instance with `shieldedInstanceConfig` (enabling Secure Boot, vTPM, and Integrity Monitoring by default).
+* **`constraints/compute.vmExternalIpAccess`**: To meet security standards, organizations frequently block public external IP addresses. GPU Finder implements the `assign_external_ip` parameter to circumvent policy violations. By setting `"assign_external_ip": false`, instances are created without an external NAT IP.
+
+### 2. New Parameters in `gpu-config.json`
+
+Ensure your configuration files are updated with these modern settings:
+
+* **`assign_external_ip`** *(boolean)*: Controls the attachment of a public external ephemeral NAT IP to the instance. Set to `false` in highly secure or constrained environments.
+* **`disk_type`** *(string)*: Specifies the type of boot/root persistent disk. Modern architectures (such as `g4-standard-*` and `g2-standard-*`) require higher-performance disk backends like `hyperdisk-balanced` or `pd-balanced`.
+
+### 3. Hyperdisk Requirements for Modern Instances
+
+* **G4 & Modern GPU Families**: Newer machine types, such as G4 (equipped with NVIDIA® RTX PRO 6000) and G2 (equipped with NVIDIA® L4), have strict dependencies on modern storage technologies. 
+* Attempting to use legacy or standard persistent disks (`pd-standard`) with these instances will result in provisioning failures. Ensure you set `"disk_type": "hyperdisk-balanced"` when defining configuration payloads for these machine types to ensure successful, policy-compliant deployment.
