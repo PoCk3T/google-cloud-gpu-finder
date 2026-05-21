@@ -99,17 +99,25 @@ pip install -r requirements.txt
 | us-west4-b                |                                              |                           |                         |
 | us-west4-c                |	Las Vegas, Nevada, North America             |                           |                         |
 
- * gpu_type: [The type of GPU to use](https://cloud.google.com/compute/docs/gpus). Note that A100s have to be used with [A2 machine types](https://cloud.google.com/compute/docs/gpus/create-vm-with-gpus#examples-add-gpu-a100), while the other GPU types can be configured with N1 machine types.
- * number_of_gpus: [The number of GPUs to attach to each instance](https://cloud.google.com/compute/docs/gpus)
+ * gpu_type: [The type of GPU to use](https://cloud.google.com/compute/docs/gpus). Note that newer accelerator-optimized machine types (like A2, A3, A4, G2, and G4) come with GPUs intrinsically attached. You must use the correct machine type family for the desired GPU model. The older GPU types can be attached to N1 machine types.
+ * number_of_gpus: [The number of GPUs to attach to each instance](https://cloud.google.com/compute/docs/gpus). This must match the configured machine type when using accelerator-optimized instances.
 
-| GPU Model    | Configuration Name   | Compatible Machine Types | Number of GPUs |
-|--------------|----------------------|--------------------------|----------------|
-| NVIDIA® A100 | nvidia-tesla-a100    | A2                       | 1, 2, 4, 8, 16 |
-| NVIDIA® T4   | nvidia-tesla-t4      | N1                       | 1, 2, 4        |
-| NVIDIA® V100 | nvidia-tesla-v100    | N1                       | 1, 2, 4, 8     |
-| NVIDIA® P4   | nvidia-tesla-p4      | N1                       | 1, 2, 4        |
-| NVIDIA® P100 | nvidia-tesla-p100    | N1                       | 1, 2, 4        |
-| NVIDIA® K80  | nvidia-tesla-k80     | N1                       | 1, 2, 4, 8     |
+| GPU Model                   | Configuration Name        | Compatible Machine Types  | Number of GPUs |
+|-----------------------------|---------------------------|---------------------------|----------------|
+| NVIDIA® GB300 (A4X Max)     | nvidia-gb300              | A4X Max                   | 4              |
+| NVIDIA® GB200 (A4X)         | nvidia-gb200              | A4X                       | 4              |
+| NVIDIA® B200 (A4)           | nvidia-b200               | A4                        | 8              |
+| NVIDIA® H200 (A3 Ultra)     | nvidia-h200-141gb         | A3 Ultra                  | 8              |
+| NVIDIA® H100 (A3 Mega/High/Edge) | nvidia-h100-mega-80gb / nvidia-h100-80gb | A3        | 1, 2, 4, 8     |
+| NVIDIA® A100 80GB (A2 Ultra)| nvidia-a100-80gb          | A2 Ultra                  | 1, 2, 4, 8     |
+| NVIDIA® A100 (A2 Standard)  | nvidia-tesla-a100         | A2                        | 1, 2, 4, 8, 16 |
+| NVIDIA® RTX PRO 6000 (G4)   | nvidia-rtx-pro-6000       | G4                        | 1, 2, 4, 8     |
+| NVIDIA® L4 (G2)             | nvidia-l4                 | G2                        | 1, 2, 4, 8     |
+| NVIDIA® T4                  | nvidia-tesla-t4           | N1                        | 1, 2, 4        |
+| NVIDIA® V100                | nvidia-tesla-v100         | N1                        | 1, 2, 4, 8     |
+| NVIDIA® P4                  | nvidia-tesla-p4           | N1                        | 1, 2, 4        |
+| NVIDIA® P100                | nvidia-tesla-p100         | N1                        | 1, 2, 4        |
+| NVIDIA® K80                 | nvidia-tesla-k80          | N1                        | 1, 2, 4, 8     |
 
 4. Additional configuration like disk type, disk size, firewall rules, image type, image family, VPC, startup scripts, and others can be set in the configuration file too.
 5. When running the script, you will see output in the logs about which regions and zones the instances will be created in, the names of instances, and whether a quota has been reached in a given region.
