@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.idea/
+venv/
+new_venv/
+gpu-finder-state.json

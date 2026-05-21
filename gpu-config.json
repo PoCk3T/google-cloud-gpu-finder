@@ -64,5 +64,71 @@
         "https-server"
       ]
     }
+  },
+  {
+    "project_id": "gpu-finder-testproject",
+    "bucket_name": "find-gcp-gpus",
+    "number_of_instances": 1,
+    "preemptible": false,
+    "instance_config": {
+      "name": "a100-80gb-instance",
+      "assign_external_ip": false,
+      "root_persistent_disk": {
+        "boot": "True",
+        "autoDelete": "True"
+      },
+      "machine_type": "a2-ultragpu-8g",
+      "zone": ["us-east4-a", "us-east4-b", "us-east4-c"],
+      "network_interfaces": {
+        "network": "global/networks/default"
+      },
+      "gpu_type": "nvidia-a100-80gb",
+      "number_of_gpus": 8,
+      "image_project": "deeplearning-platform-release",
+      "image_family": "common-cu129-ubuntu-2204-nvidia-580",
+      "identity_and_api_access": {
+        "service_account_email": "default",
+        "scopes": "https://www.googleapis.com/auth/cloud-platform"
+      },
+      "disk_type": "pd-balanced",
+      "disk_size": "50",
+      "firewall_rules": [
+        "http-server",
+        "https-server"
+      ]
+    }
+  },
+  {
+    "project_id": "gpu-finder-testproject",
+    "bucket_name": "find-gcp-gpus",
+    "number_of_instances": 1,
+    "preemptible": false,
+    "instance_config": {
+      "name": "h100-instance",
+      "assign_external_ip": false,
+      "root_persistent_disk": {
+        "boot": "True",
+        "autoDelete": "True"
+      },
+      "machine_type": "a3-highgpu-8g",
+      "zone": ["us-east4-a", "us-east4-b", "us-east4-c"],
+      "network_interfaces": {
+        "network": "global/networks/default"
+      },
+      "gpu_type": "nvidia-h100-80gb",
+      "number_of_gpus": 8,
+      "image_project": "deeplearning-platform-release",
+      "image_family": "common-cu129-ubuntu-2204-nvidia-580",
+      "identity_and_api_access": {
+        "service_account_email": "default",
+        "scopes": "https://www.googleapis.com/auth/cloud-platform"
+      },
+      "disk_type": "hyperdisk-balanced",
+      "disk_size": "50",
+      "firewall_rules": [
+        "http-server",
+        "https-server"
+      ]
+    }
   }
 ]

@@ -6,6 +6,13 @@ GPU Finder attempts to make it easier to find and provision Compute Engine Insta
 
 GPU quotas are not always consistent across regions and at any particular time. At peak times, there may be limited availability of GPUs in the cloud due to high demand for their compute capacity. This makes finding and provisioning of GPUs difficult and time consuming. By just setting a few configuration parameters, this script can be used to automate the process of finding and provisioning Compute Engine instances with GPUs.
 
+## State Tracking & Automation (Cronjob Safe)
+
+GPU Finder uses a state tracking mechanism to manage instances across runs. The current state is saved locally in `gpu-finder-state.json`.
+
+* **Prevents Over-provisioning:** On each run, the script reads `gpu-finder-state.json` to see how many instances have already been successfully created. It will only search for and provision the remaining number of instances needed to reach the target `number_of_instances` configuration.
+* **Cronjob Safe:** This state tracking makes the tool perfectly safe to run as a recurring cronjob. You can automate the script to run at regular intervals (e.g., every few minutes). It will repeatedly attempt to provision instances until the target count is satisfied, and then safely do nothing on subsequent executions.
+
 ## Prerequisites
 
 * A GCP account and access to a service account with the permissions needed for creating instances. See the [docs](https://cloud.google.com/docs/authentication/production#passing_variable) for creating a key file and setting the ```GOOGLE_APPLICATION_CREDENTIALS``` environment variable
